@@ -1,0 +1,209 @@
+// ================= Generator & Datasource =================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======================== Enums ===========================
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum InterestMethod {
+  SIMPLE // annual simple interest prorated by months
+  MONTHLY_FLAT // flat % per month on full principal
+  COMPOUND // interest on interest (e.g., monthly compounding)
+  REDUCING // EMI (reducing balance)
+}
+
+enum CollateralStatus {
+  PLEDGED
+  RELEASED
+  SEIZED
+}
+
+enum CollateralType {
+  PROPERTY
+  GOLD
+  VEHICLE
+  CASH_FD
+  SECURITIES
+  OTHER
+}
+
+// ======================== Models ==========================
+// Single table for all people. Admins manage many users via self-relation.
+model User {
+  id           String  @id @default(cuid()) // internal PK
+  userId       String  @unique // external login ID (e.g. "USR001")
+  name         String?
+  email        String? @unique
+  phone        String?
+  location     String?
+  role         Role    @default(USER)
+  passwordHash String
+
+  // Self-relation: which admin manages this user
+  adminId String?
+  admin   User?   @relation("AdminUsers", fields: [adminId], references: [id])
+  users   User[]  @relation("AdminUsers") // users managed by this user (when role = ADMIN/SUPER_ADMIN)
+
+  // Loans
+  loansBorrowed Loan[] @relation("BorrowerLoans") // as borrower (role USER)
+  loansManaged  Loan[] @relation("AdminLoans") // created/managed loans (role ADMIN/SUPER_ADMIN)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  Account   Account[]
+  Session   Session[]
+
+  @@index([role])
+  @@index([adminId])
+}
+
+// Each loan ties a borrower (USER) to an admin (ADMIN/SUPER_ADMIN).
+// Money fields use Decimal for precision. Store snapshots for fast list/report.
+model Loan {
+  id String @id @default(cuid())
+
+  borrowerId String
+  borrower   User   @relation("BorrowerLoans", fields: [borrowerId], references: [id])
+
+  adminId String
+  admin   User   @relation("AdminLoans", fields: [adminId], references: [id])
+
+  principal Decimal   @db.Decimal(18, 2) // ₹ amount
+  rate      Decimal   @db.Decimal(8, 4) // interest rate; interpret via interestMethod
+  months    Int
+  startDate DateTime
+  endDate   DateTime?
+
+  interestMethod InterestMethod @default(SIMPLE)
+
+  // Early-closure policy
+  lockIn         Boolean @default(false) // if true: owes full-term interest even if closed early
+  minMonthsFloor Int     @default(0) // if not lock-in: minimum months interest required
+
+  status        LoanStatus @default(ACTIVE)
+  // Snapshots (store what backend computes for consistency)
+  totalInterest Decimal?   @db.Decimal(18, 2) // computed once at creation/update
+  totalPayable  Decimal?   @db.Decimal(18, 2) // principal + interest
+
+  depositedPrincipal Decimal @default(0) @db.Decimal(18, 2) // ✅ new
+  depositedInterest  Decimal @default(0) @db.Decimal(18, 2) // ✅ new
+
+  notes String?
+
+  isSecured   Boolean      @default(false)
+  collaterals Collateral[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([borrowerId])
+  @@index([adminId])
+  @@index([status])
+  @@index([startDate])
+}
+
+model PaymentReceiptManual {
+  id String @id @default(cuid())
+
+  // Core links
+  loanId      String
+  adminUserId String // admin who recorded this payment
+
+  // Deposit info
+  depositedAt DateTime @default(now()) // when deposit was made
+  amount      Decimal  @db.Decimal(18, 2)
+
+  // Optional split (if you track principal vs interest separately)
+  depositPrincipal Decimal? @db.Decimal(18, 2)
+  depositInterest  Decimal? @db.Decimal(18, 2)
+
+  // Remarks
+  note String?
+
+  // Basic loan snapshot (for reference at time of deposit)
+  borrowerUserId String?
+  principal      Decimal? @db.Decimal(18, 2)
+  rate           Decimal? @db.Decimal(8, 4)
+  months         Int?
+  interestMethod String?
+
+  createdAt DateTime @default(now())
+
+  @@index([loanId, createdAt])
+  @@index([adminUserId])
+}
+
+// ================ NextAuth required tables =================
+// Keep these names exactly as-is for the Prisma Adapter.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Collateral {
+  id     String @id @default(cuid())
+  loanId String
+  loan   Loan   @relation(fields: [loanId], references: [id])
+
+  type           CollateralType
+  title          String // short name: "Honda Activa", "Gold necklace"
+  description    String? // extra details (chassis no., karat, address, etc.)
+  estimatedValue Decimal          @db.Decimal(18, 2)
+  status         CollateralStatus @default(PLEDGED)
+  appraisalAt    DateTime? // when valued
+  notes          String?
+
+  // optional: store doc/image URLs; later you can normalize into a separate table if needed
+  documentUrls String[] @db.VarChar(512) // Postgres string[] (okay for light usage)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([loanId])
+  @@index([type, status])
+}
