@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
 import { prisma } from "@/lib/dbConnect";
 import { Prisma } from "@prisma/client";
+import { getSession } from "@/lib/getSession";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { loanId } = await req.json();
-    console.log("this is the loanId",loanId);
     
     if (!loanId) {
       return NextResponse.json({ error: "Missing loanId" }, { status: 400 });
@@ -27,7 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Loan not found" }, { status: 404 });
     }
 
-    if (loan.adminId !== session.user.id) {
+    if (loan.adminId !== session.id) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
     }
 
@@ -63,7 +58,7 @@ export async function POST(req: Request) {
       const receipt = await prisma.paymentReceiptManual.create({
         data: {
           loanId,
-          adminUserId: session.user.id,
+          adminUserId: session.id,
           amount: totalInterest + totalPrincipal,
           depositPrincipal: totalPrincipal,
           depositInterest: totalInterest,

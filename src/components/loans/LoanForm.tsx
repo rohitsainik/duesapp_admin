@@ -230,7 +230,6 @@ export default function CreateLoanForm({
 
       if (res.ok) {
         const data = await res.json();
-        console.log("this is the reposnse", data);
         setUsers(data);
       }
     }

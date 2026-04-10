@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import CreateLoanForm, {
   CreateLoanInput,
   BorrowerOption,
@@ -33,10 +32,25 @@ const currency = (n: number) =>
   });
 
 export function LoansClient() {
-  const { data: session } = useSession();
-  const adminName = session?.user?.name ?? "Admin";
-  const adminId = session?.user?.id ?? "";
+  
+ 
+
+  const [adminName, setAdminName] = useState("Admin");
+  const [adminId, setAdminId] = useState("");
+  
   const CURRENT_ADMIN: AdminOption = { id: adminId, label: adminName };
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setAdminName(data.name ?? "Admin");
+          setAdminId(data.id ?? "");
+        }
+      })
+      .catch(() => null);
+  }, []);
 
   const [loans, setLoans] = useState<LoanRow[]>([]);
   const [borrowers, setBorrowers] = useState<BorrowerOption[]>([]);
@@ -51,7 +65,6 @@ export function LoansClient() {
       const res = await fetch("/api/loan/getLoanAdminUser", {
         cache: "no-store",
       });
-      console.log("this is the response", res);
 
       if (!res.ok) {
         setLoans([]);
@@ -77,7 +90,6 @@ export function LoansClient() {
         }>;
       }> = await res.json();
 
-      console.log("this is the loan data", data);
 
       // Borrowers dropdown
       const borrowerOpts: BorrowerOption[] = data.map((u) => ({
@@ -118,7 +130,6 @@ export function LoansClient() {
           };
         })
       );
-      console.log("this is the flat loans data", flatLoans);
 
       setLoans(flatLoans);
     } catch {

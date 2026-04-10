@@ -1,30 +1,31 @@
-// src/app/api/loans/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/dbConnect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { cookies } from "next/headers";
+import { verifyAccessToken } from "@/lib/jwt";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token")?.value;
 
-    if (session.user.role !== "admin") {
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyAccessToken(token);
+    const role = (payload.role as string ?? "").toLowerCase();
+    const adminId = payload.id as string;
+
+    if (role !== "admin" && role !== "superadmin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // get all users under this admin, with their loans
     const usersWithLoans = await prisma.user.findMany({
-      where: {
-        adminId: session.user.id,
-      },
+      where: { adminId },
       select: {
         id: true,
         userId: true,
         name: true,
-        // adjust relation name according to your schema:
         loansBorrowed: {
           select: {
             id: true,
@@ -35,7 +36,7 @@ export async function GET() {
             totalPayable: true,
             status: true,
             createdAt: true,
-            totalInterest:true
+            totalInterest: true,
           },
           orderBy: { createdAt: "desc" },
         },

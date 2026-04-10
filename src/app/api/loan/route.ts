@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { cookies } from "next/headers";
+import { verifyAccessToken } from "@/lib/jwt";
 import { prisma } from "@/lib/dbConnect";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { InterestMethod } from "@prisma/client";
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    const { id: callerId, role: rawRole } = session.user as { id?: string; role?: string };
-    const role = (rawRole ?? "").toString().toUpperCase();
-    if (!callerId || role !== "ADMIN") {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyAccessToken(token);
+    const callerId = payload.id as string;
+    const role = ((payload.role as string) ?? "").toUpperCase();
+
+    if (!callerId || (role !== "ADMIN" && role !== "SUPERADMIN")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

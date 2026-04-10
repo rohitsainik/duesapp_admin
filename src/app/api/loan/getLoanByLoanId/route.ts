@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
 import { prisma } from "@/lib/dbConnect";
+import { getSession } from "@/lib/getSession";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const session = await getSession();
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -15,7 +14,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing loanId" }, { status: 400 });
     }
 
-    console.log("Fetching loan details for ID:", loanId);
 
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },

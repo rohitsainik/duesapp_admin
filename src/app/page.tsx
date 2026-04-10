@@ -1,13 +1,17 @@
-import { getServerSession } from "next-auth";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { verifyAccessToken } from "@/lib/jwt";
 
 export default async function HomePage() {
-  const session = await getServerSession(authOptions);
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
 
-  // If no user session, redirect to login
-  if (!session) {
+  if (!token) redirect("/auth/login");
+
+  try {
+    await verifyAccessToken(token);
+  } catch {
     redirect("/auth/login");
   }
 

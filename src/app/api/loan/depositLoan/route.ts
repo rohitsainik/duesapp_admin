@@ -1,18 +1,15 @@
 // app/api/depositLoan/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";          // update path as needed
+import { NextRequest, NextResponse } from "next/server";       // update path as needed
 import { prisma } from "@/lib/dbConnect";
 import { Prisma } from "@prisma/client";
+import { getSession } from "@/lib/getSession";
 
 export async function POST(req: NextRequest) {
   try {
     // 1) Admin from session
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const adminUserId = session.user.id;
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const adminUserId = session.id;
 
     // 2) Input
     const body = await req.json();

@@ -18,7 +18,6 @@ async function main() {
     },
   });
 
-  console.log("✅ Super Admin created:", user);
 }
 
 main()

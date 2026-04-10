@@ -1,28 +1,41 @@
+// app/(protected)/layout.tsx
 import React from "react";
-import { getServerSession } from "next-auth";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { verifyAccessToken } from "@/lib/jwt";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
 
 export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/auth/login");
+  const cookieStore = await cookies();
+  const token = cookieStore.get("refresh_token")?.value;
+
+  if (!token) redirect("/auth/login");
+
+  try {
+    await verifyAccessToken(token);
+  } catch {
+    redirect("/auth/login");
+  }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* sidebar on the left */}
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* Sidebar — fixed height, scrolls independently */}
       <Sidebar />
 
-      {/* main area with header */}
-      <div className="flex flex-1 flex-col">
+      {/* Right column: header + scrollable content */}
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <Header />
-        <main className="flex-1 p-4">{children}</main>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-6">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

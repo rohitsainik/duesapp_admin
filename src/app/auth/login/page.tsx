@@ -1,20 +1,22 @@
 import React from "react";
-import { getServerSession } from "next-auth";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { getRoleHome } from "@/lib/nav";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { verifyAccessToken } from "@/lib/jwt";
 
 export default async function LoginPage() {
-  const session = await getServerSession(authOptions);
-  const role = session?.user?.role as
-    | "admin"
-    | "superadmin"
-    | "user"
-    | undefined;
+  const cookieStore = await cookies();
+  const token = cookieStore.get("access_token")?.value;
 
-  if (role) {
-    redirect(getRoleHome(role));
+  if (token) {
+    try {
+      const payload = await verifyAccessToken(token);
+      const role = payload.role as "admin" | "superadmin" | "user" | undefined;
+      redirect(getRoleHome(role));
+    } catch {
+      // token invalid or expired, just show login page
+    }
   }
 
   return (

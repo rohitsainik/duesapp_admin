@@ -1,12 +1,12 @@
+// app/layout.tsx
 import "./globals.css";
-import { Inter } from "next/font/google";
-import Providers from "@/components/provider/Providers";
+import { Geist } from "next/font/google";
 
-const inter = Inter({ subsets: ["latin"] });
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 
 export const metadata = {
-  title: "Loan Management App",
-  description: "Admin & Super Admin panels with role-based access",
+  title: "Duesbook — Loan Management",
+  description: "Role-based loan management platform for admins and super admins",
 };
 
 export default function RootLayout({
@@ -16,8 +16,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} h-full bg-gray-50`}>
-        <Providers>{children}</Providers>
+      <body className={`${geist.variable} font-sans h-full bg-slate-50 antialiased`}>
+        {children}
       </body>
     </html>
   );

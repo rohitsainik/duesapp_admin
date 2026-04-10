@@ -1,672 +1,560 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 
-// -----------------------------
-// Types
-// -----------------------------
-type LoanStatus = "active" | "closed" | "overdue";
-type LoanType = "personal" | "business" | "education" | "home";
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Period = "all" | "oct" | "nov" | "dec";
 
-interface Loan {
-  id: string;
-  type: LoanType;
-  status: LoanStatus;
-  amount: number; // disbursed amount
-  disbursedOn: string; // ISO date
-  outstanding: number; // remaining amount
-}
-
-interface User {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  loans: Loan[];
-}
-
-// -----------------------------
-// Demo data
-// -----------------------------
-const SAMPLE_USERS: User[] = [
-  {
-    id: "U001",
-    name: "Aditi Sharma",
-    email: "aditi@example.com",
-    phone: "+91-98765-00001",
-    loans: [
-      {
-        id: "L-1001",
-        type: "personal",
-        status: "active",
-        amount: 150000,
-        disbursedOn: "2025-06-15",
-        outstanding: 82000,
-      },
-      {
-        id: "L-1002",
-        type: "education",
-        status: "closed",
-        amount: 200000,
-        disbursedOn: "2023-08-10",
-        outstanding: 0,
-      },
-    ],
-  },
-  {
-    id: "U002",
-    name: "Rahul Verma",
-    email: "rahul@example.com",
-    phone: "+91-98765-00002",
-    loans: [
-      {
-        id: "L-1003",
-        type: "business",
-        status: "overdue",
-        amount: 500000,
-        disbursedOn: "2024-02-01",
-        outstanding: 360000,
-      },
-    ],
-  },
-  {
-    id: "U003",
-    name: "Neha Gupta",
-    email: "neha@example.com",
-    phone: "+91-98765-00003",
-    loans: [
-      {
-        id: "L-1004",
-        type: "home",
-        status: "active",
-        amount: 1200000,
-        disbursedOn: "2025-04-20",
-        outstanding: 1150000,
-      },
-    ],
-  },
-  {
-    id: "U004",
-    name: "Vikram Singh",
-    email: "vikram@example.com",
-    phone: "+91-98765-00004",
-    loans: [
-      {
-        id: "L-1005",
-        type: "personal",
-        status: "active",
-        amount: 75000,
-        disbursedOn: "2025-08-01",
-        outstanding: 65000,
-      },
-      {
-        id: "L-1006",
-        type: "business",
-        status: "active",
-        amount: 300000,
-        disbursedOn: "2025-07-15",
-        outstanding: 285000,
-      },
-    ],
-  },
+// ── Static data ───────────────────────────────────────────────────────────────
+const LOANS = [
+  { id: "L1", user: "User X", userId: "USR001", principal: 50000,  rate: 4, months: 12, disbursed: "2024-10-01", status: "Active",  paid: 16500, remaining: 33500 },
+  { id: "L2", user: "User Y", userId: "USR002", principal: 100000, rate: 5, months: 12, disbursed: "2024-10-15", status: "Active",  paid: 26200, remaining: 73800 },
+  { id: "L3", user: "User Z", userId: "USR003", principal: 80000,  rate: 4, months: 12, disbursed: "2024-10-10", status: "Active",  paid: 19800, remaining: 60200 },
 ];
 
-// -----------------------------
-// Utils
-// -----------------------------
-function classNames(...arr: Array<string | false | null | undefined>) {
-  return arr.filter(Boolean).join(" ");
+const MONTHLY = [
+  { month: "Oct '24", disbursed: 230000, collected: 20000, interest: 4100 },
+  { month: "Nov '24", disbursed: 0,      collected: 22500, interest: 4200 },
+  { month: "Dec '24", disbursed: 0,      collected: 24500, interest: 4150 },
+];
+
+const SUMMARY = {
+  portfolio:       230000,
+  totalInterest:   12450,
+  totalCollected:  62500,
+  outstanding:     167500,
+  avgRate:         4.33,
+  repaymentRate:   98.5,
+  activeLoans:     3,
+  users:           3,
+};
+
+const inr = (n: number) =>
+  n.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+const pct = (part: number, whole: number) =>
+  whole === 0 ? 0 : Math.round((part / whole) * 100);
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+const PortfolioIcon = () => (
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+const InterestIcon = () => (
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+const CollectedIcon = () => (
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+const OutstandingIcon = () => (
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+const DownloadIcon = () => (
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </svg>
+);
+const ArrowRightIcon = () => (
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
+
+// ── Mini bar chart (pure CSS/SVG, no lib) ─────────────────────────────────────
+function BarChart({
+  data,
+  valueKey,
+  color,
+}: {
+  data: typeof MONTHLY;
+  valueKey: keyof (typeof MONTHLY)[0];
+  color: string;
+}) {
+  const values = data.map((d) => Number(d[valueKey]));
+  const max = Math.max(...values, 1);
+  const barW = 32;
+  const gap = 20;
+  const chartH = 80;
+  const totalW = data.length * (barW + gap) - gap;
+
+  return (
+    <svg viewBox={`0 0 ${totalW} ${chartH + 24}`} width="100%" style={{ overflow: "visible" }}>
+      {data.map((d, i) => {
+        const val = Number(d[valueKey]);
+        const h = Math.max(4, (val / max) * chartH);
+        const x = i * (barW + gap);
+        const y = chartH - h;
+        return (
+          <g key={i}>
+            {/* track */}
+            <rect x={x} y={0} width={barW} height={chartH} rx={4} fill="#F1F5F9" />
+            {/* bar */}
+            <rect x={x} y={y} width={barW} height={h} rx={4} fill={color} opacity={0.85} />
+            {/* label */}
+            <text x={x + barW / 2} y={chartH + 16} textAnchor="middle" fontSize={9} fill="#94A3B8">
+              {d.month.split(" ")[0]}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
 }
 
-function formatINR(n: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(n);
+// ── Donut (SVG) ───────────────────────────────────────────────────────────────
+function Donut({ collected, outstanding }: { collected: number; outstanding: number }) {
+  const total = collected + outstanding;
+  const r = 36;
+  const cx = 50;
+  const cy = 50;
+  const circ = 2 * Math.PI * r;
+  const cPct = pct(collected, total);
+  const cLen = (cPct / 100) * circ;
+
+  return (
+    <svg viewBox="0 0 100 100" width="100" height="100">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#EEF2FF" strokeWidth={14} />
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke="#4F46E5"
+        strokeWidth={14}
+        strokeDasharray={`${cLen} ${circ - cLen}`}
+        strokeDashoffset={circ / 4}
+        strokeLinecap="round"
+      />
+      <text x={cx} y={cy - 5} textAnchor="middle" fontSize={13} fontWeight="600" fill="#1E293B">{cPct}%</text>
+      <text x={cx} y={cy + 10} textAnchor="middle" fontSize={8} fill="#94A3B8">collected</text>
+    </svg>
+  );
 }
 
-// -----------------------------
-// Derived shapes
-// -----------------------------
-interface UserReportRow {
-  userId: string;
-  name: string;
-  email: string;
-  phone: string;
-  totalLoans: number;
-  activeLoans: number;
-  overdueLoans: number;
-  closedLoans: number;
-  totalOutstanding: number;
-  totalDisbursed: number;
-  lastDisbursedOn?: string;
-}
+// ── Main Component ────────────────────────────────────────────────────────────
+export function ReportsClient() {
+  const [period, setPeriod] = useState<Period>("all");
 
-function buildRows(users: User[]): UserReportRow[] {
-  return users.map((u) => {
-    const totalLoans = u.loans.length;
-    const activeLoans = u.loans.filter((l) => l.status === "active").length;
-    const overdueLoans = u.loans.filter((l) => l.status === "overdue").length;
-    const closedLoans = u.loans.filter((l) => l.status === "closed").length;
-    const totalOutstanding = u.loans.reduce(
-      (s, l) => s + (l.outstanding || 0),
-      0
-    );
-    const totalDisbursed = u.loans.reduce((s, l) => s + l.amount, 0);
-    const lastDisbursedOn = u.loans
-      .map((l) => l.disbursedOn)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-    return {
-      userId: u.id,
-      name: u.name,
-      email: u.email || "—",
-      phone: u.phone || "—",
-      totalLoans,
-      activeLoans,
-      overdueLoans,
-      closedLoans,
-      totalOutstanding,
-      totalDisbursed,
-      lastDisbursedOn,
-    };
-  });
-}
-
-// -----------------------------
-// Component
-// -----------------------------
-export default function Reports() {
-  const [mode, setMode] = useState<"all" | "filter">("all");
-  const [users] = useState<User[]>(SAMPLE_USERS);
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<"all" | LoanStatus>("all");
-  const [type, setType] = useState<"all" | LoanType>("all");
-  const [minOutstanding, setMinOutstanding] = useState<string>("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  const filteredUsers = useMemo(() => {
-    if (mode === "all" && !showFilters) return users;
-
-    return users.filter((u) => {
-      const matchesQuery = q
-        ? [u.name, u.email, u.phone]
-            .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(q.toLowerCase()))
-        : true;
-      const matchesStatus =
-        status === "all" ? true : u.loans.some((l) => l.status === status);
-      const matchesType =
-        type === "all" ? true : u.loans.some((l) => l.type === type);
-      const min = Number(minOutstanding);
-      const matchesOutstanding =
-        isNaN(min) || min <= 0
-          ? true
-          : u.loans.reduce((s, l) => s + (l.outstanding || 0), 0) >= min;
-      return matchesQuery && matchesStatus && matchesType && matchesOutstanding;
-    });
-  }, [mode, users, q, status, type, minOutstanding, showFilters]);
-
-  const rows = useMemo(() => buildRows(filteredUsers), [filteredUsers]);
-
-  const resetFilters = () => {
-    setQ("");
-    setStatus("all");
-    setType("all");
-    setMinOutstanding("");
+  const periodLabel: Record<Period, string> = {
+    all: "All time",
+    oct: "October 2024",
+    nov: "November 2024",
+    dec: "December 2024",
   };
+
+  const kpis = [
+    {
+      label: "Portfolio value",
+      value: inr(SUMMARY.portfolio),
+      sub: "Total disbursed",
+      icon: <PortfolioIcon />,
+      iconBg: "bg-indigo-50", iconColor: "text-indigo-600",
+      badge: "Total", badgeBg: "bg-indigo-50 text-indigo-700",
+    },
+    {
+      label: "Total interest",
+      value: inr(SUMMARY.totalInterest),
+      sub: `${SUMMARY.avgRate}% avg rate`,
+      icon: <InterestIcon />,
+      iconBg: "bg-amber-50", iconColor: "text-amber-600",
+      badge: "Expected", badgeBg: "bg-amber-50 text-amber-700",
+    },
+    {
+      label: "Amount collected",
+      value: inr(SUMMARY.totalCollected),
+      sub: `${pct(SUMMARY.totalCollected, SUMMARY.portfolio)}% of portfolio`,
+      icon: <CollectedIcon />,
+      iconBg: "bg-emerald-50", iconColor: "text-emerald-600",
+      badge: "Received", badgeBg: "bg-emerald-50 text-emerald-700",
+    },
+    {
+      label: "Outstanding",
+      value: inr(SUMMARY.outstanding),
+      sub: `${pct(SUMMARY.outstanding, SUMMARY.portfolio)}% remaining`,
+      icon: <OutstandingIcon />,
+      iconBg: "bg-rose-50", iconColor: "text-rose-600",
+      badge: "Pending", badgeBg: "bg-rose-50 text-rose-700",
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="rounded-xl border shadow-md bg-white overflow-hidden">
-          <div className="bg-indigo-600 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm shadow">
-                <svg
-                  className="w-6 h-6 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z"
-                  />
-                </svg>
-              </div>
-              <h2 className="text-xl font-semibold text-white tracking-tight">
-                Reports
-              </h2>
-            </div>
-          </div>
-          <div className="px-6 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-                User Loan Reports
-              </h1>
-              <p className="text-sm text-gray-700">
-                See all users with loans or narrow down with filters.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-1 rounded-full bg-gray-50 text-gray-700 border border-gray-200 text-sm">
-                Total: {rows.length}
-              </span>
-              <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
-                <button
-                  className={classNames(
-                    "px-3 py-1.5 text-sm border-r border-gray-300",
-                    mode === "all"
-                      ? "bg-gray-900 text-white"
-                      : "bg-white text-gray-900 hover:bg-gray-50"
-                  )}
-                  aria-pressed={mode === "all"}
-                  onClick={() => {
-                    setMode("all");
-                    setShowFilters(false);
-                    resetFilters();
-                  }}
-                >
-                  All users
-                </button>
-                <button
-                  className={classNames(
-                    "px-3 py-1.5 text-sm",
-                    mode === "filter"
-                      ? "bg-gray-900 text-white"
-                      : "bg-white text-gray-900 hover:bg-gray-50"
-                  )}
-                  aria-pressed={mode === "filter"}
-                  onClick={() => {
-                    setMode("filter");
-                    setShowFilters(true);
-                  }}
-                >
-                  Filtered
-                </button>
-              </div>
-            </div>
-          </div>
+
+      {/* ── Page header ──────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Reports &amp; Analytics</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Portfolio overview and loan-level breakdown.
+          </p>
         </div>
-
-        {/* Filter Section */}
-        {(mode === "filter" || showFilters) && (
-          <div className="rounded-xl border shadow-md bg-white p-4 space-y-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Filter Options
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    Refine your report data
-                  </p>
-                </div>
-              </div>
+        <div className="flex items-center gap-2">
+          {/* Period filter */}
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+            {(["all", "oct", "nov", "dec"] as Period[]).map((p) => (
               <button
-                onClick={resetFilters}
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1"
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  period === p
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                Reset All
+                {p === "all" ? "All" : p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                  Search
-                </label>
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Name, email, or phone..."
-                  className="w-full h-11 rounded-xl border border-slate-300 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Loan Status
-                </label>
-                <select
-                  value={status}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                    setStatus(e.target.value as "all" | LoanStatus)
-                  }
-                  className="w-full h-11 rounded-xl border border-slate-300 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                >
-                  <option value="all">All Status</option>
-                  <option value="active">Active Only</option>
-                  <option value="overdue">Overdue Only</option>
-                  <option value="closed">Closed Only</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                    />
-                  </svg>
-                  Loan Type
-                </label>
-                <select
-                  value={type}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                    setType(e.target.value as "all" | LoanType)
-                  }
-                  className="w-full h-11 rounded-xl border border-slate-300 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                >
-                  <option value="all">All Types</option>
-                  <option value="personal">Personal</option>
-                  <option value="business">Business</option>
-                  <option value="education">Education</option>
-                  <option value="home">Home</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Min Outstanding (₹)
-                </label>
-                <input
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={minOutstanding}
-                  onChange={(e) =>
-                    setMinOutstanding(e.target.value.replace(/[^0-9]/g, ""))
-                  }
-                  placeholder="e.g., 100000"
-                  className="w-full h-11 rounded-xl border border-slate-300 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Data Table */}
-        <div className="rounded-xl border shadow-md bg-white overflow-hidden">
-          <div className="px-6 py-4 border-b bg-white">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  User Report Data
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Showing {rows.length} {rows.length === 1 ? "user" : "users"}
-                </p>
-              </div>
-              <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                Export Report
-              </button>
-            </div>
-          </div>
-
-          {/* Mobile */}
-          <div className="md:hidden p-4 space-y-4">
-            {rows.length === 0 && (
-              <div className="py-12 text-center">
-                <svg
-                  className="w-16 h-16 mx-auto text-slate-300 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                  />
-                </svg>
-                <p className="text-slate-500 font-medium">No users found</p>
-                <p className="text-sm text-slate-400 mt-1">
-                  Try adjusting your filters
-                </p>
-              </div>
-            )}
-            {rows.map((r) => (
-              <div
-                key={r.userId}
-                className="rounded-xl border shadow-md bg-white p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 font-semibold">
-                      {r.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {r.name}
-                      </div>
-                      <div className="text-xs text-slate-500">{r.userId}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <Field label="Email" value={r.email} />
-                  <Field label="Phone" value={r.phone} />
-                  <Field label="Total loans" value={r.totalLoans} />
-                  <Field label="Active" value={r.activeLoans} />
-                  <Field label="Overdue" value={r.overdueLoans} />
-                  <Field label="Closed" value={r.closedLoans} />
-                  <Field
-                    label="Outstanding"
-                    value={formatINR(r.totalOutstanding)}
-                  />
-                  <Field
-                    label="Disbursed"
-                    value={formatINR(r.totalDisbursed)}
-                  />
-                  <Field
-                    label="Last disbursed"
-                    value={r.lastDisbursedOn || "—"}
-                    full
-                  />
-                </div>
-              </div>
             ))}
           </div>
+          <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors">
+            <DownloadIcon />
+            Export
+          </button>
+        </div>
+      </div>
 
-          {/* Desktop */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <Th>USER</Th>
-                  <Th>EMAIL</Th>
-                  <Th>PHONE</Th>
-                  <Th className="text-right">LOANS</Th>
-                  <Th className="text-right">ACTIVE</Th>
-                  <Th className="text-right">OVERDUE</Th>
-                  <Th className="text-right">CLOSED</Th>
-                  <Th className="text-right">OUTSTANDING</Th>
-                  <Th className="text-right">DISBURSED</Th>
-                  <Th className="text-right">LAST DISBURSED</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={10}
-                      className="py-10 text-center text-gray-500"
-                    >
-                      No results.
-                    </td>
-                  </tr>
-                )}
-                {rows.map((r) => (
-                  <tr key={r.userId} className="border-t hover:bg-indigo-50">
-                    <Td>
-                      <div className="font-medium text-gray-900">{r.name}</div>
-                      <div className="text-xs text-gray-500">{r.userId}</div>
-                    </Td>
-                    <Td>{r.email}</Td>
-                    <Td>{r.phone}</Td>
-                    <Td className="text-right">{r.totalLoans}</Td>
-                    <Td className="text-right">{r.activeLoans}</Td>
-                    <Td className="text-right">{r.overdueLoans}</Td>
-                    <Td className="text-right">{r.closedLoans}</Td>
-                    <Td className="text-right">
-                      {formatINR(r.totalOutstanding)}
-                    </Td>
-                    <Td className="text-right">
-                      {formatINR(r.totalDisbursed)}
-                    </Td>
-                    <Td className="text-right">{r.lastDisbursedOn || "—"}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── Hero banner ──────────────────────────────────────────────────── */}
+      <div className="rounded-2xl bg-indigo-600 p-6">
+        <div className="flex items-start justify-between mb-1">
+          <span className="text-indigo-200 text-xs font-medium uppercase tracking-wide">
+            {periodLabel[period]}
+          </span>
+          <span className="text-xs bg-white/15 text-indigo-100 px-2.5 py-1 rounded-full">
+            {SUMMARY.activeLoans} active loans · {SUMMARY.users} borrowers
+          </span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="border-r border-indigo-500 pr-4">
+            <div className="text-indigo-200 text-xs font-medium uppercase tracking-wide mb-1">Portfolio</div>
+            <div className="text-white text-2xl font-bold">{inr(SUMMARY.portfolio)}</div>
+            <div className="text-indigo-300 text-xs mt-1"><span className="text-emerald-300">↑ 12.5%</span> growth</div>
+          </div>
+          <div className="border-r border-indigo-500 pr-4 pl-2">
+            <div className="text-indigo-200 text-xs font-medium uppercase tracking-wide mb-1">Collected</div>
+            <div className="text-white text-2xl font-bold">{inr(SUMMARY.totalCollected)}</div>
+            <div className="text-indigo-300 text-xs mt-1">{pct(SUMMARY.totalCollected, SUMMARY.portfolio)}% of total</div>
+          </div>
+          <div className="border-r border-indigo-500 pr-4 pl-2">
+            <div className="text-indigo-200 text-xs font-medium uppercase tracking-wide mb-1">Repayment</div>
+            <div className="text-white text-2xl font-bold">{SUMMARY.repaymentRate}%</div>
+            <div className="text-emerald-300 text-xs mt-1">Excellent health</div>
+          </div>
+          <div className="pl-2">
+            <div className="text-indigo-200 text-xs font-medium uppercase tracking-wide mb-1">Interest</div>
+            <div className="text-white text-2xl font-bold">{inr(SUMMARY.totalInterest)}</div>
+            <div className="text-indigo-300 text-xs mt-1">{SUMMARY.avgRate}% avg rate</div>
           </div>
         </div>
       </div>
+
+      {/* ── KPI cards ────────────────────────────────────────────────────── */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {kpis.map((kpi) => (
+          <div
+            key={kpi.label}
+            className="bg-white rounded-xl border border-slate-100 p-5 hover:border-slate-200 hover:shadow-sm transition-all duration-200"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${kpi.iconBg} ${kpi.iconColor}`}>
+                {kpi.icon}
+              </div>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${kpi.badgeBg}`}>
+                {kpi.badge}
+              </span>
+            </div>
+            <div className="text-slate-500 text-xs font-medium mb-1">{kpi.label}</div>
+            <div className="text-xl font-bold text-slate-900 mb-3 tabular-nums">{kpi.value}</div>
+            <div className="text-xs text-slate-400">{kpi.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Charts + Collection row ───────────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-3">
+
+        {/* Monthly disbursement chart */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Monthly disbursement</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Principal released per month</p>
+            </div>
+          </div>
+          <BarChart data={MONTHLY} valueKey="disbursed" color="#4F46E5" />
+        </div>
+
+        {/* Monthly collections chart */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Monthly collections</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Amount received per month</p>
+            </div>
+          </div>
+          <BarChart data={MONTHLY} valueKey="collected" color="#10B981" />
+        </div>
+
+        {/* Collection progress donut */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-slate-900">Collection progress</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Collected vs outstanding</p>
+          </div>
+          <div className="flex items-center gap-5">
+            <Donut collected={SUMMARY.totalCollected} outstanding={SUMMARY.outstanding} />
+            <div className="space-y-3 flex-1">
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="h-2 w-2 rounded-full bg-indigo-600 flex-shrink-0" />
+                  <span className="text-xs text-slate-500">Collected</span>
+                </div>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums">{inr(SUMMARY.totalCollected)}</span>
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="h-2 w-2 rounded-full bg-indigo-100 flex-shrink-0" />
+                  <span className="text-xs text-slate-500">Outstanding</span>
+                </div>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums">{inr(SUMMARY.outstanding)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-5">
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-indigo-600 transition-all"
+                style={{ width: `${pct(SUMMARY.totalCollected, SUMMARY.portfolio)}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1.5">
+              <span className="text-xs text-slate-400">0%</span>
+              <span className="text-xs text-indigo-600 font-medium">
+                {pct(SUMMARY.totalCollected, SUMMARY.portfolio)}% collected
+              </span>
+              <span className="text-xs text-slate-400">100%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Monthly breakdown table ───────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Monthly breakdown</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Disbursement, collections &amp; interest by month</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["Month", "Disbursed", "Collected", "Interest", "Collection rate"].map((h) => (
+                  <th key={h} className="text-left text-xs font-medium text-slate-400 px-6 py-3 whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {MONTHLY.map((row) => (
+                <tr key={row.month} className="hover:bg-slate-50/60 transition-colors">
+                  <td className="px-6 py-4 font-medium text-slate-900 text-sm">{row.month}</td>
+                  <td className="px-6 py-4 tabular-nums text-slate-700 text-sm">
+                    {row.disbursed > 0 ? inr(row.disbursed) : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-6 py-4 tabular-nums text-slate-700 text-sm">{inr(row.collected)}</td>
+                  <td className="px-6 py-4 tabular-nums text-amber-600 text-sm">{inr(row.interest)}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[60px]">
+                        <div
+                          className="h-full rounded-full bg-emerald-500"
+                          style={{ width: `${Math.min(100, pct(row.collected, row.collected + 10000))}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">
+                        {SUMMARY.repaymentRate}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {/* Totals row */}
+              <tr className="bg-slate-50/80 border-t border-slate-200">
+                <td className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</td>
+                <td className="px-6 py-3.5 tabular-nums text-sm font-semibold text-slate-900">
+                  {inr(MONTHLY.reduce((s, r) => s + r.disbursed, 0))}
+                </td>
+                <td className="px-6 py-3.5 tabular-nums text-sm font-semibold text-slate-900">
+                  {inr(MONTHLY.reduce((s, r) => s + r.collected, 0))}
+                </td>
+                <td className="px-6 py-3.5 tabular-nums text-sm font-semibold text-amber-600">
+                  {inr(MONTHLY.reduce((s, r) => s + r.interest, 0))}
+                </td>
+                <td className="px-6 py-3.5" />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Loan-level breakdown ──────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Loan-level breakdown</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Repayment progress per loan</p>
+          </div>
+          <span className="text-xs text-slate-400">{LOANS.length} loans</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {["Borrower", "Principal", "Rate", "Paid", "Remaining", "Progress", "Status"].map((h) => (
+                  <th key={h} className="text-left text-xs font-medium text-slate-400 px-6 py-3 whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {LOANS.map((loan) => {
+                const progress = pct(loan.paid, loan.principal);
+                return (
+                  <tr key={loan.id} className="hover:bg-slate-50/60 transition-colors">
+                    {/* Borrower */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex-shrink-0">
+                          {loan.user.replace("User ", "")}
+                        </div>
+                        <div>
+                          <div className="font-medium text-slate-900 text-sm">{loan.user}</div>
+                          <div className="text-xs text-slate-400">{loan.id} · {loan.userId}</div>
+                        </div>
+                      </div>
+                    </td>
+                    {/* Principal */}
+                    <td className="px-6 py-4 tabular-nums font-semibold text-slate-900 text-sm">
+                      {inr(loan.principal)}
+                    </td>
+                    {/* Rate */}
+                    <td className="px-6 py-4 text-slate-600 text-sm">{loan.rate}%</td>
+                    {/* Paid */}
+                    <td className="px-6 py-4 tabular-nums text-emerald-600 text-sm font-medium">
+                      {inr(loan.paid)}
+                    </td>
+                    {/* Remaining */}
+                    <td className="px-6 py-4 tabular-nums text-rose-500 text-sm">
+                      {inr(loan.remaining)}
+                    </td>
+                    {/* Progress */}
+                    <td className="px-6 py-4 min-w-[120px]">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-indigo-500 transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-slate-500 tabular-nums w-8 text-right">
+                          {progress}%
+                        </span>
+                      </div>
+                    </td>
+                    {/* Status */}
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                        {loan.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-50 flex items-center justify-between text-xs text-slate-400">
+          <span>
+            Total repaid:{" "}
+            <strong className="text-slate-600">{inr(LOANS.reduce((s, l) => s + l.paid, 0))}</strong>
+            {" "}of{" "}
+            <strong className="text-slate-600">{inr(LOANS.reduce((s, l) => s + l.principal, 0))}</strong>
+          </span>
+          <button className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium transition-colors">
+            View all loans <ArrowRightIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Per-user summary ─────────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {LOANS.map((loan) => {
+          const progress = pct(loan.paid, loan.principal);
+          const interest = Math.round((loan.principal * loan.rate * loan.months) / (100 * 12));
+          return (
+            <div
+              key={loan.id}
+              className="bg-white rounded-xl border border-slate-100 p-5 hover:border-slate-200 hover:shadow-sm transition-all duration-200"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-sm font-semibold flex-shrink-0">
+                    {loan.user.replace("User ", "")}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{loan.user}</div>
+                    <div className="text-xs text-slate-400">{loan.id} · {loan.rate}% p.a.</div>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Active
+                </span>
+              </div>
+
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {[
+                  { label: "Principal",  value: inr(loan.principal), color: "text-slate-900" },
+                  { label: "Interest",   value: inr(interest),       color: "text-amber-600" },
+                  { label: "Paid",       value: inr(loan.paid),      color: "text-emerald-600" },
+                  { label: "Remaining",  value: inr(loan.remaining), color: "text-rose-500" },
+                ].map((item) => (
+                  <div key={item.label} className="bg-slate-50 rounded-lg px-3 py-2.5 border border-slate-100">
+                    <div className="text-xs text-slate-400 mb-0.5">{item.label}</div>
+                    <div className={`text-sm font-semibold tabular-nums ${item.color}`}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Progress */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-slate-400">Repayment progress</span>
+                  <span className="text-xs font-medium text-indigo-600">{progress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-indigo-500" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
     </div>
-  );
-}
-
-// -----------------------------
-// Small components
-// -----------------------------
-
-function Field({
-  label,
-  value,
-  full = false,
-}: {
-  label: string;
-  value: React.ReactNode;
-  full?: boolean;
-}) {
-  return (
-    <div className={classNames("flex flex-col gap-0.5", full && "col-span-2")}>
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className="font-medium text-slate-900 truncate">{value}</span>
-    </div>
-  );
-}
-
-function Th({
-  children,
-  className = "",
-}: React.PropsWithChildren<{ className?: string }>) {
-  return (
-    <th
-      className={classNames(
-        "px-4 py-3 text-left font-medium uppercase tracking-wider text-[11px]",
-        className
-      )}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  className = "",
-}: React.PropsWithChildren<{ className?: string }>) {
-  return (
-    <td className={classNames("px-4 py-3 align-middle", className)}>
-      {children}
-    </td>
   );
 }

@@ -84,7 +84,6 @@ export function UserLoanReport({
         body: JSON.stringify({ loanId }),
       });
       const data = await res.json();
-      console.log("this is the response", res);
 
       if (!res.ok) throw new Error(data?.error || "Failed to clear loan");
       toast.success("Loan cleared successfully ✅");

@@ -1,52 +1,98 @@
-// src/app/api/users/route.ts (POST)
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/dbConnect";
 import bcrypt from "bcryptjs";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { getSession } from "@/lib/getSession";
 
 export const runtime = "nodejs";
 
+const VALID_ROLES = ["USER", "ADMIN", "SUPER_ADMIN"] as const;
+type Role = (typeof VALID_ROLES)[number];
+
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // ── 1. Auth ────────────────────────────────────────────────────────────────
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: meId, role: myRoleRaw } = session.user as { id?: string; role?: "SUPER_ADMIN" | "ADMIN" | "USER" };
-  const myRole: "SUPER_ADMIN" | "ADMIN" | "USER" = (myRoleRaw ?? "USER");
+  // ── 2. Get caller's role directly from DB — source of truth ───────────────
+  const caller = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: { role: true },
+  });
 
+  if (!caller)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const myRole = caller.role; // "SUPER_ADMIN" | "ADMIN" | "USER" — exact DB enum
+
+  // ── 3. Parse & validate body ───────────────────────────────────────────────
+  const body = await req.json().catch(() => null);
+
+  if (!body)
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+
+  const { userId, name, email, phone, password, role, location } = body;
+
+  if (!userId || !name || !password || !role) {
+    return NextResponse.json(
+      { error: "userId, name, password, role are required" },
+      { status: 400 }
+    );
+  }
+
+  // ── 4. Whitelist role value ────────────────────────────────────────────────
+  if (!VALID_ROLES.includes(role as Role)) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+
+  // ── 5. RBAC ────────────────────────────────────────────────────────────────
+  if (role === "SUPER_ADMIN" && myRole !== "SUPER_ADMIN") {
+    return NextResponse.json(
+      { error: "Only SUPER_ADMIN can create SUPER_ADMIN" },
+      { status: 403 }
+    );
+  }
+  if (role === "ADMIN" && myRole !== "SUPER_ADMIN") {
+    return NextResponse.json(
+      { error: "Only SUPER_ADMIN can create ADMIN" },
+      { status: 403 }
+    );
+  }
+  if (role === "USER" && myRole !== "ADMIN") {
+    return NextResponse.json(
+      { error: "Only ADMIN can create USER" },
+      { status: 403 }
+    );
+  }
+
+  // ── 6. Create user ─────────────────────────────────────────────────────────
   try {
-    const { userId, name, email, phone, password, role, location } = await req.json();
-
-    if (!userId || !password || !role) {
-      return NextResponse.json({ error: "userId, password, role are required" }, { status: 400 });
-    }
-
-    // RBAC
-    if (role === "ADMIN" && myRole !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Only SUPER_ADMIN can create ADMIN" }, { status: 403 });
-    }
-    if (role === "USER" && myRole !== "ADMIN") {
-      return NextResponse.json({ error: "Only ADMIN can create USER" }, { status: 403 });
-    }
-    if (role === "SUPER_ADMIN" && myRole !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Only SUPER_ADMIN can create SUPER_ADMIN" }, { status: 403 });
-    }
-
     const passwordHash = await bcrypt.hash(password, 10);
 
     const created = await prisma.user.create({
       data: {
         userId,
-        name: name ?? null,
-        email: email ?? null,
-        phone: phone ?? null,
-        passwordHash,
-        role,
+        name,
+        email:    email    ?? null,
+        phone:    phone    ?? null,
         location: location ?? null,
-        // Important: if an ADMIN is creating a USER, force-link to *this* admin
-        ...(role === "USER" && myRole === "ADMIN" ? { adminId: meId } : {}),
+        passwordHash,
+        role: role as Role,
+        // Force-link USER to the ADMIN who created them
+        ...(role === "USER" && myRole === "ADMIN" ? { adminId: session.id } : {}),
       },
-      select: { id: true, userId: true, name: true, email: true, phone: true, role: true, location: true, adminId: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        location: true,
+        adminId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json({ ok: true, user: created }, { status: 201 });
@@ -55,8 +101,12 @@ export async function POST(req: Request) {
     if (code === "P2002") {
       const metaTarget = (e as { meta?: { target?: unknown } } | null)?.meta?.target;
       const fields = Array.isArray(metaTarget) ? metaTarget.join(", ") : "unique field";
-      return NextResponse.json({ error: `Unique constraint: ${fields}` }, { status: 409 });
+      return NextResponse.json(
+        { error: `Duplicate ${fields}` },
+        { status: 409 }
+      );
     }
+    console.error("Create user error:", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getRoleHome } from "@/lib/nav";
 
@@ -14,7 +13,7 @@ export function LoginForm() {
 
   const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") || undefined;
+  const next = params.get("next") || undefined; // matches your proxy ?next= param
 
   const valid = useMemo(
     () => userId.trim().length > 0 && password.length >= 4,
@@ -30,28 +29,29 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
 
-    const res = await signIn("credentials", {
-      userId, // matches your Credentials provider field
-      password,
-      redirect: false, // we will redirect after reading the role
-      callbackUrl,
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
 
-    if (res?.error) {
-      setError("Invalid credentials");
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Invalid credentials");
+        return;
+      }
+
+      const data = await res.json();
+      const role = data.user?.role as "admin" | "superadmin" | "user" | undefined;
+
+      const target = next || getRoleHome(role);
+      router.replace(target);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const session = await getSession();
-    const role = session?.user?.role as
-      | "admin"
-      | "superadmin"
-      | "user"
-      | undefined;
-
-    const target = callbackUrl || getRoleHome(role);
-    router.replace(target);
   }
 
   return (
@@ -151,6 +151,7 @@ export function LoginForm() {
       {/* Action */}
       <div className="mt-6">
         <button
+          type="submit"
           disabled={!valid || loading}
           className="group relative flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:from-indigo-600 hover:to-sky-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-300"
         >
@@ -168,12 +169,12 @@ export function LoginForm() {
                 r="10"
                 stroke="currentColor"
                 strokeWidth="4"
-              ></circle>
+              />
               <path
                 className="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              ></path>
+              />
             </svg>
           )}
           {loading ? "Signing in..." : "Sign In"}
